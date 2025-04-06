@@ -1,0 +1,17 @@
+1. GCP 권한 설정(Compute 관리자, Compute 네트워크 관리자, Artifact Registry  관리자)
+    - Service Account: 편집자(VM --> GCP Project)
+    - Service Account: Key 생성된 소유자(GitHub Action runner --> GCP Project) 
+2. GitHub secrets  설정
+    - 위치: 해당 리파지토리 -->  Settings --> Secrets and variables --> Actions --> Secrets--> New repository secret
+    - 등록 항목:
+        NABEE_ENV : 소스 코드 내의 .env
+        GCP_PROJECT_ID : GCP Project 의 PROJECT_ID
+        GCP_ARTIFACT_REPO_NAME : GCP Artifact repository
+        GCP_SA_KEY: Key 생성 소유자의 키(다운로드 받은 json 파일)
+3. GitHub Actions  관련 파일 확인
+   - 프로젝트 리포지터리 내 .github/workflow/cicd.yml, Dockerfile 존재 확인
+4. main branch 에 push 될 때 Github Actions 실행
+5. cicd.yml 내용
+   - main branch checkout, requirement , dockernization , artifact Registry 이미지 등록
+   - static ip 생성, firewall policy(8501 포트), VM 생성
+   - 이미지 업데이터
