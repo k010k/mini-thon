@@ -1,43 +1,16 @@
 from mcp.server.fastmcp import FastMCP
-<<<<<<< HEAD
-=======
 import requests
 import os
 from dotenv import load_dotenv
->>>>>>> mini
 
 # Initialize FastMCP server with configuration
 mcp = FastMCP(
     "Weather",  # Name of the MCP server
-<<<<<<< HEAD
-    instructions="You are a weather assistant that can answer questions about the weather in a given location.",  # Instructions for the LLM on how to use this tool
-=======
     instructions="You are a weather assistant that can provide the current weather based on the user's automatically detected location.",
->>>>>>> mini
     host="0.0.0.0",  # Host address (0.0.0.0 allows connections from any IP)
     port=8005,  # Port number for the server
 )
 
-<<<<<<< HEAD
-
-@mcp.tool()
-async def get_weather(location: str) -> str:
-    """
-    Get current weather information for the specified location.
-
-    This function simulates a weather service by returning a fixed response.
-    In a production environment, this would connect to a real weather API.
-
-    Args:
-        location (str): The name of the location (city, region, etc.) to get weather for
-
-    Returns:
-        str: A string containing the weather information for the specified location
-    """
-    # Return a mock weather response
-    # In a real implementation, this would call a weather API
-    return f"It's always Sunny in {location}"
-=======
 # --- test_weather.py에서 가져온 함수들 --- START
 def get_location():
     """
@@ -112,15 +85,8 @@ def get_weather() -> str:
             return "날씨 데이터 형식이 예상과 다릅니다."
     else:
         return "날씨 정보를 가져오는 데 실패했습니다."
->>>>>>> mini
 
 
 if __name__ == "__main__":
     # Start the MCP server with stdio transport
-<<<<<<< HEAD
-    # stdio transport allows the server to communicate with clients
-    # through standard input/output streams, making it suitable for
-    # local development and testing
-=======
->>>>>>> mini
     mcp.run(transport="stdio")
