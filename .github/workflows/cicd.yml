@@ -8,23 +8,23 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   ARTIFACT_REPO_NAME: ${{ secrets.GCP_ARTIFACT_REPO_NAME }}
-  GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
   SA_KEY_CONTENT: ${{ secrets.GCP_SA_KEY }}
+  GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }} 
   REGION: asia-northeast3
   CUSTOM_IMAGE: nabee
   JOB_IMAGE: nabee-job
   STATIC_IP_NAME: nabee-static-ip
   INSTANCE_NAME: nabee-instance 
-  MACHINE_TYPE: e2-medium
-  IMAGE_FAMILY: cos-109-lts
-  IMAGE_PROJECT: cos-cloud
+  MACHINE_TYPE: e2-standard-2
+  IMAGE_FAMILY: ubuntu-2204-lts
+  IMAGE_PROJECT: ubuntu-os-cloud
   IMAGE_VERSION: latest
   SERVICE_PORT: 8501
 
 jobs:
   build-to-artifact-repository:
     runs-on: ubuntu-latest
-    if: false
+    # if: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -64,7 +64,7 @@ jobs:
 
   create-resources-deploy:
     runs-on: ubuntu-latest
-    # needs: build-to-artifact-repository
+    needs: build-to-artifact-repository
     # if: false     
     steps:
       - name: Checkout code
@@ -109,61 +109,73 @@ jobs:
           echo "FIREWALL_RULE=$FIREWALL_RULE" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Check if Instance Exists and Recreate/Create
+      - name: Check if Instance Exists and Recreate/Create with Ubuntu (Standard Auth)
         id: instance
         run: |
-          set -e
+          set -e # 스크립트 오류 시 즉시 중단
 
+          # --- (선택 사항: 기존 인스턴스 삭제 로직 - 이전과 동일) ---
           echo "Checking if instance $INSTANCE_NAME exists..."
           if gcloud compute instances describe "${INSTANCE_NAME}" --zone="${REGION}-b" &>/dev/null; then
-            echo "Instance $INSTANCE_NAME already exists. "
+            echo "Instance $INSTANCE_NAME already exists. 
+          else
+            echo "Instance $INSTANCE_NAME does not exist. Creating..."
           fi
-          echo "Generating startup script (startup.sh)..."
+          # --- (기존 인스턴스 삭제 로직 끝) ---
 
-          VM_KEY_PATH="/tmp/sa_key.json"
+          echo "Generating Ubuntu startup script (startup.sh) for standard auth..."
 
+          # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 시작 ---
           echo "#!/bin/bash" > startup.sh
-
           echo "set -e" >> startup.sh
+          echo "export DEBIAN_FRONTEND=noninteractive" >> startup.sh # apt-get non-interactive 모드
 
-          echo "printf '%s\\n' \"\$(cat <<'END_OF_KEY'
-          ${SA_KEY_CONTENT}
-          END_OF_KEY
-          )\" > \"$VM_KEY_PATH\"" >> startup.sh
-          echo "chmod 400 \"$VM_KEY_PATH\"" >> startup.sh
+          # 필수 패키지 설치 (Docker, gcloud CLI)
+          echo "echo 'Updating packages and installing Docker and Google Cloud CLI...'" >> startup.sh
+          echo "apt-get update -y" >> startup.sh
+          echo "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release docker.io google-cloud-cli" >> startup.sh
 
-          echo "echo 'Logging into Artifact Registry using temporary JSON key file...'" >> startup.sh
-          echo "cat \"$VM_KEY_PATH\" | sudo docker login -u _json_key --password-stdin https://${REGION}-docker.pkg.dev" >> startup.sh
+          # Docker 서비스 활성화 및 시작
+          echo "echo 'Ensuring Docker service is active...'" >> startup.sh
+          echo "systemctl enable docker" >> startup.sh
+          echo "systemctl start docker" >> startup.sh
 
+          # <<< 핵심: gcloud 를 이용한 Docker 인증 구성 >>>
+          echo "echo 'Configuring Docker for Artifact Registry using gcloud...'" >> startup.sh
+          # VM의 서비스 계정을 사용하여 자동으로 인증 구성
+          echo "gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet" >> startup.sh
+          echo "echo 'Docker configured successfully.'" >> startup.sh
+
+          # Docker 이미지 Pull 및 Run (워크플로우 변수 사용)
           IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION}"
-          echo "echo 'Pulling Docker image...'" >> startup.sh
+          echo "echo 'Pulling Docker image: $IMAGE_PATH'" >> startup.sh
+          # Ubuntu에서는 sudo 필요
           echo "sudo docker pull \"$IMAGE_PATH\"" >> startup.sh
           echo "echo 'Image pulled successfully.'" >> startup.sh
 
           echo "echo 'Running Docker container...'" >> startup.sh
-          echo "sudo docker run -d -p ${SERVICE_PORT}:${SERVICE_PORT} --name ${CUSTOM_IMAGE} \"$IMAGE_PATH\"" >> startup.sh
+          echo "sudo docker run -d -p 8501:8501 --name ${CUSTOM_IMAGE} \"$IMAGE_PATH\"" >> startup.sh
           echo "echo 'Container started.'" >> startup.sh
+          # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 끝 ---
 
+          # 생성된 startup.sh 파일을 실행 가능하게 만듦 (Runner에서)
           chmod +x startup.sh
 
-          echo "Creating/Recreating GCE instance $INSTANCE_NAME..."
-
-          # 인스턴스 생성
-          gcloud compute instances create $INSTANCE_NAME \
+          echo "Creating/Recreating GCE instance $INSTANCE_NAME with Ubuntu..."
+          # gcloud 명령어로 인스턴스 생성 (Ubuntu 이미지 및 올바른 옵션, startup.sh 전달)
+          gcloud compute instances create "$INSTANCE_NAME" \
             --zone="${REGION}-b" \
-            --machine-type="${MACHINE_TYPE}" \
-            --image-family="${IMAGE_FAMILY}" \
-            --image-project="${IMAGE_PROJECT}" \
+            --machine-type="$MACHINE_TYPE" \
+            --image-family="$IMAGE_FAMILY" \  # Ubuntu 이미지 패밀리
+            --image-project="$IMAGE_PROJECT" \ # Ubuntu 이미지 프로젝트
             --boot-disk-size=20GB \
             --address="${{ steps.static-ip.outputs.STATIC_IP }}" \
-            --service-account="${{ secrets.GCP_SERVICE_ACCOUNT }}" \
-            --scopes=https://www.googleapis.com/auth/cloud-platform \
-            --metadata-from-file startup-script="startup.sh"
+            --service-account="$GCP_SERVICE_ACCOUNT" \ # 올바른 서비스 계정
+            --scopes=https://www.googleapis.com/auth/cloud-platform \ # 전체 API 접근 범위
+            --metadata-from-file startup-script=startup.sh # 생성된 스크립트 전달
 
           echo "Instance $INSTANCE_NAME created/recreated successfully."
-          echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_OUTPUT
-
-  
+          echo "instance_name=$INSTANCE_NAME" >> $GITHUB_OUTPUT
       - name: Verify Instance Creation
         run: |
           gcloud compute instances describe $INSTANCE_NAME --zone "${REGION}-b"
