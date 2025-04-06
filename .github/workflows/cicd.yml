@@ -181,6 +181,9 @@ jobs:
             echo "Instance $INSTANCE_NAME created/recreated successfully."
             echo "instance_name=$INSTANCE_NAME" >> $GITHUB_OUTPUT
           fi
+          
+      - name: Wait for Instance to Initialize
+        run: sleep 333
 
       - name: Verify Instance Creation
         run: |
