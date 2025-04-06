@@ -122,7 +122,6 @@ jobs:
             echo "Generating Ubuntu startup script (startup.sh) for standard auth..."
 
             # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 시작 ---
-          # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 시작 ---
             echo "#!/bin/bash" > startup.sh
             echo "set -e" >> startup.sh
             echo "export DEBIAN_FRONTEND=noninteractive" >> startup.sh # apt-get non-interactive 모드
@@ -132,10 +131,10 @@ jobs:
             echo "apt-get update -y" >> startup.sh
             echo "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release docker.io" >> startup.sh
 
-            # Google Cloud CLI 저장소 추가
+            # Google Cloud CLI 저장소 추가 (최신 방식)
             echo "echo 'Adding Google Cloud CLI repository...'" >> startup.sh
-            echo "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -" >> startup.sh
-            echo "echo \"deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list" >> startup.sh
+            echo "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/google-cloud-cli.gpg" >> startup.sh
+            echo "echo \"deb [signed-by=/etc/apt/trusted.gpg.d/google-cloud-cli.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list" >> startup.sh
             echo "echo 'Updating packages again after adding Google Cloud CLI repository...'" >> startup.sh
             echo "apt-get update -y" >> startup.sh
             echo "echo 'Installing Google Cloud CLI...'" >> startup.sh
@@ -163,7 +162,6 @@ jobs:
             echo "sudo docker run -d -p 8501:8501 --name ${CUSTOM_IMAGE} \"$IMAGE_PATH\"" >> startup.sh
             echo "echo 'Container started.'" >> startup.sh
             # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 끝 ---
-
             # 생성된 startup.sh 파일을 실행 가능하게 만듦 (Runner에서)
             chmod +x startup.sh
 
