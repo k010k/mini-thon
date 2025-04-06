@@ -24,7 +24,7 @@ env:
 jobs:
   build-to-artifact-repository:
     runs-on: ubuntu-latest
-    # if: false
+    if: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -64,7 +64,7 @@ jobs:
 
   create-resources-deploy:
     runs-on: ubuntu-latest
-    needs: build-to-artifact-repository
+    # needs: build-to-artifact-repository
     # if: false     
     steps:
       - name: Checkout code
@@ -117,7 +117,7 @@ jobs:
           # --- (선택 사항: 기존 인스턴스 삭제 로직 - 이전과 동일) ---
           echo "Checking if instance $INSTANCE_NAME exists..."
           if gcloud compute instances describe "${INSTANCE_NAME}" --zone="${REGION}-b" &>/dev/null; then
-            echo "Instance $INSTANCE_NAME already exists. 
+            echo "Instance $INSTANCE_NAME already exists."
           else
             echo "Instance $INSTANCE_NAME does not exist. Creating..."
           fi
