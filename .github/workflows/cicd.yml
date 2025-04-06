@@ -23,7 +23,7 @@ env:
 jobs:
   build-to-artifact-repository:
     runs-on: ubuntu-latest
-    if: false
+    # if: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -46,7 +46,7 @@ jobs:
       #   id: slug
       #   run: echo "::set-output name=sha::$(git rev-parse --short HEAD)"
 
-      - id: auth
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: "${{ secrets.GCP_SA_KEY }}"
@@ -190,6 +190,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     # needs: create-resources-deploy
+    needs: build-to-artifact-repository
     # if: false     
     steps:
       - name: Checkout code
