@@ -216,7 +216,7 @@ jobs:
         run: |
           gcloud compute ssh --zone="${{ env.REGION }}-b" --project=${{ env.PROJECT_ID }} ${{ env.INSTANCE_NAME }} \
           --command="
-            docker pull ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}} &&
-            docker stop ${{ env.CONTAINER_NAME }} || true;
-            docker rm ${{ env.CONTAINER_NAME }} || true;
-            docker run -d -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} --name ${{ env.CONTAINER_NAME }} ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}}" --quiet
+            sudo docker pull ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}} &&
+            sudo docker stop ${{ env.CONTAINER_NAME }} || true;
+            sudo docker rm ${{ env.CONTAINER_NAME }} || true;
+            sudo docker run -d -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} --name ${{ env.CONTAINER_NAME }} ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}}" --quiet
