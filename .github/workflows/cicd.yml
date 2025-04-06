@@ -122,6 +122,7 @@ jobs:
             echo "Generating Ubuntu startup script (startup.sh) for standard auth..."
 
             # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 시작 ---
+          # --- Ubuntu VM에서 실행될 startup.sh 스크립트 내용 생성 시작 ---
             echo "#!/bin/bash" > startup.sh
             echo "set -e" >> startup.sh
             echo "export DEBIAN_FRONTEND=noninteractive" >> startup.sh # apt-get non-interactive 모드
@@ -129,7 +130,16 @@ jobs:
             # 필수 패키지 설치 (Docker, gcloud CLI)
             echo "echo 'Updating packages and installing Docker and Google Cloud CLI...'" >> startup.sh
             echo "apt-get update -y" >> startup.sh
-            echo "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release docker.io google-cloud-cli" >> startup.sh
+            echo "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release docker.io" >> startup.sh
+
+            # Google Cloud CLI 저장소 추가
+            echo "echo 'Adding Google Cloud CLI repository...'" >> startup.sh
+            echo "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -" >> startup.sh
+            echo "echo \"deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list" >> startup.sh
+            echo "echo 'Updating packages again after adding Google Cloud CLI repository...'" >> startup.sh
+            echo "apt-get update -y" >> startup.sh
+            echo "echo 'Installing Google Cloud CLI...'" >> startup.sh
+            echo "apt-get install -y google-cloud-cli" >> startup.sh
 
             # Docker 서비스 활성화 및 시작
             echo "echo 'Ensuring Docker service is active...'" >> startup.sh
