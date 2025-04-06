@@ -1,0 +1,204 @@
+name: Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  ARTIFACT_REPO_NAME: ${{ secrets.GCP_ARTIFACT_REPO_NAME }}
+  GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
+  SA_KEY_CONTENT: ${{ secrets.GCP_SA_KEY }}
+  REGION: asia-northeast3
+  CUSTOM_IMAGE: nabee
+  JOB_IMAGE: nabee-job
+  STATIC_IP_NAME: nabee-static-ip
+  INSTANCE_NAME: nabee-instance 
+  MACHINE_TYPE: e2-medium
+  IMAGE_FAMILY: cos-109-lts
+  IMAGE_PROJECT: cos-cloud
+  IMAGE_VERSION: latest
+  SERVICE_PORT: 8501
+
+jobs:
+  build-to-artifact-repository:
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q -r requirements.txt
+
+      - name: Set Environment File
+        run: |
+         echo "${{ secrets.NABEE_ENV }}" > .env
+       
+      # - name: Get short SHA
+      #   id: slug
+      #   run: echo "::set-output name=sha::$(git rev-parse --short HEAD)"
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push Docker image to Artifact Registry
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev"
+          docker build -t "${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION}" .
+          docker push "${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION}"
+
+
+  create-resources-deploy:
+    runs-on: ubuntu-latest
+    # needs: build-to-artifact-repository
+    # if: false     
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Fetch Static IP Address
+        id: static-ip
+        run: |
+          IP=$(gcloud compute addresses describe ${{ env.STATIC_IP_NAME }} --region ${{ env.REGION }} --format='value(address)' 2>/dev/null || true)
+          if [ -z "$IP" ]; then
+            gcloud compute addresses create ${{ env.STATIC_IP_NAME }} --region ${{ env.REGION }}
+            IP=$(gcloud compute addresses describe ${{ env.STATIC_IP_NAME }} --region ${{ env.REGION }} --format='value(address)')
+          fi
+          echo "STATIC_IP=$IP" >> $GITHUB_OUTPUT
+
+      - name: Create Firewall Rule for Streamlit
+        run: |
+          RULE_NAME="streamlit"
+          # 전역 리소스이므로 --region 옵션 없이 조회
+          FIREWALL_RULE=$(gcloud compute firewall-rules describe "$RULE_NAME" 2>/dev/null || true)
+          if [ -z "$FIREWALL_RULE" ]; then
+            gcloud compute firewall-rules create "$RULE_NAME" \
+              --direction=INGRESS \
+              --priority=1000 \
+              --network=default \
+              --action=allow \
+              --rules=tcp:8501 \
+              --source-ranges=0.0.0.0/0
+            FIREWALL_RULE="created"  # 필요에 따라 단순 메시지 처리
+          else
+            FIREWALL_RULE="exists"
+          fi
+          # 출력 값에 개행이나 YAML 문법이 없도록 간단한 문자열로 작성
+          echo "FIREWALL_RULE=$FIREWALL_RULE" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Check if Instance Exists and Recreate/Create
+        id: instance
+        run: |
+          set -e
+
+          echo "Checking if instance $INSTANCE_NAME exists..."
+          if gcloud compute instances describe "${INSTANCE_NAME}" --zone="${REGION}-b" &>/dev/null; then
+            echo "Instance $INSTANCE_NAME already exists. "
+          fi
+          echo "Generating startup script (startup.sh)..."
+
+          VM_KEY_PATH="/tmp/sa_key.json"
+
+          echo "#!/bin/bash" > startup.sh
+
+          echo "set -e" >> startup.sh
+
+          echo "printf '%s\\n' \"\$(cat <<'END_OF_KEY'
+          ${SA_KEY_CONTENT}
+          END_OF_KEY
+          )\" > \"$VM_KEY_PATH\"" >> startup.sh
+          echo "chmod 400 \"$VM_KEY_PATH\"" >> startup.sh
+
+          echo "echo 'Logging into Artifact Registry using temporary JSON key file...'" >> startup.sh
+          echo "cat \"$VM_KEY_PATH\" | sudo docker login -u _json_key --password-stdin https://${REGION}-docker.pkg.dev" >> startup.sh
+
+          IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION}"
+          echo "echo 'Pulling Docker image...'" >> startup.sh
+          echo "sudo docker pull \"$IMAGE_PATH\"" >> startup.sh
+          echo "echo 'Image pulled successfully.'" >> startup.sh
+
+          echo "echo 'Running Docker container...'" >> startup.sh
+          echo "sudo docker run -d -p ${SERVICE_PORT}:${SERVICE_PORT} --name ${CUSTOM_IMAGE} \"$IMAGE_PATH\"" >> startup.sh
+          echo "echo 'Container started.'" >> startup.sh
+
+          chmod +x startup.sh
+
+          echo "Creating/Recreating GCE instance $INSTANCE_NAME..."
+
+          # 인스턴스 생성
+          gcloud compute instances create $INSTANCE_NAME \
+            --zone="${REGION}-b" \
+            --machine-type="${MACHINE_TYPE}" \
+            --image-family="${IMAGE_FAMILY}" \
+            --image-project="${IMAGE_PROJECT}" \
+            --boot-disk-size=20GB \
+            --address="${{ steps.static-ip.outputs.STATIC_IP }}" \
+            --service-account="${{ secrets.GCP_SERVICE_ACCOUNT }}" \
+            --scopes=https://www.googleapis.com/auth/cloud-platform \
+            --metadata-from-file startup-script="startup.sh"
+
+          echo "Instance $INSTANCE_NAME created/recreated successfully."
+          echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_OUTPUT
+
+  
+      - name: Verify Instance Creation
+        run: |
+          gcloud compute instances describe $INSTANCE_NAME --zone "${REGION}-b"
+        
+  run-docker-image:
+          runs-on: ubuntu-latest
+          # needs: deploy-to-gcp 
+          if: false
+          steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+
+            - id: auth
+              uses: google-github-actions/auth@v2
+              with:
+                credentials_json: "${{ secrets.GCP_SA_KEY }}"
+      
+            - name: Transfer Service Account Key to VM
+              run: |
+                REGION="${{ env.REGION }}"
+                PROJECT_ID="${{ env.PROJECT_ID }}"
+                INSTANCE_NAME="${{ env.INSTANCE_NAME }}"
+                
+                echo "${{ secrets.GCP_SA_KEY }}" > gcp_sa_key.json
+                ls -al ./gcp_sa_key.json
+                cat gcp_sa_key.json | gcloud compute ssh --zone="${REGION}-b" --project="${PROJECT_ID}" "${INSTANCE_NAME}" --command="cat > /tmp/gcp_sa_key.json"
+      
+            - name: Pull Docker Image on VM
+              run: |
+                REGION="${{ env.REGION }}"
+                PROJECT_ID="${{ env.PROJECT_ID }}"
+                INSTANCE_NAME="${{ env.INSTANCE_NAME }}"
+                ARTIFACT_REPO_NAME="${{ env.ARTIFACT_REPO_NAME }}"
+                CUSTOM_IMAGE="${{ env.CUSTOM_IMAGE }}"
+                IMAGE_VERSION="${{ env.IMAGE_VERSION }}"
+
+                gcloud compute ssh --zone="${REGION}-b" --project="${PROJECT_ID}" "${INSTANCE_NAME}" --command="docker login -u _json_key -p "$(cat /tmp/gcp_sa_key.json)" ${REGION}-docker.pkg.dev && docker stop ${CUSTOM_IMAGE} && docker rm -f ${CUSTOM_IMAGE} && docker rmi -f ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION} && docker pull ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION} && docker run -d -p 8501:8501 --name nabee ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/${CUSTOM_IMAGE}:${IMAGE_VERSION}"
+
