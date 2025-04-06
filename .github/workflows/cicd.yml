@@ -213,4 +213,4 @@ jobs:
             sudo docker rm -f ${{ env.CUSTOM_IMAGE }}  || true && 
             sudo docker rmi -f ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}} || true && 
             sudo docker pull ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}} && 
-            sudo docker run -d -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} --name ${{ env.CONTAINER_NAME }} ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}}" --quiet
+            sudo docker run -d -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} --name ${{ env.CUSTOM_IMAGE }} ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.CUSTOM_IMAGE}}:${{ env.IMAGE_VERSION}}" --quiet
