@@ -8,7 +8,6 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   ARTIFACT_REPO_NAME: ${{ secrets.GCP_ARTIFACT_REPO_NAME }}
-  SA_KEY_CONTENT: ${{ secrets.GCP_SA_KEY }}
   GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }} 
   REGION: asia-northeast3
   CUSTOM_IMAGE: nabee
@@ -165,14 +164,14 @@ jobs:
           # gcloud 명령어로 인스턴스 생성 (Ubuntu 이미지 및 올바른 옵션, startup.sh 전달)
           gcloud compute instances create "$INSTANCE_NAME" \
             --zone="${REGION}-b" \
-            --machine-type="$MACHINE_TYPE" \
-            --image-family="$IMAGE_FAMILY" \
-            --image-project="$IMAGE_PROJECT" \ 
+            --machine-type="${MACHINE_TYPE}" \
+            --image-family="${IMAGE_FAMILY}" \
+            --image-project="${IMAGE_PROJECT}" \
             --boot-disk-size=20GB \
             --address="${{ steps.static-ip.outputs.STATIC_IP }}" \
-            --service-account="$GCP_SERVICE_ACCOUNT" \ 
-            --scopes="https://www.googleapis.com/auth/cloud-platform" \ 
-            --metadata-from-file startup-script=startup.sh 
+            --service-account="${GCP_SERVICE_ACCOUNT}" \
+            --scopes="https://www.googleapis.com/auth/cloud-platform" \
+            --metadata-from-file startup-script=startup.sh
 
           echo "Instance $INSTANCE_NAME created/recreated successfully."
           echo "instance_name=$INSTANCE_NAME" >> $GITHUB_OUTPUT
