@@ -6,6 +6,7 @@ import anyio
 import os
 from pathlib import Path
 import pickle
+import sqlite3
 
 # # nest_asyncio 적용: 이미 실행 중인 이벤트 루프 내에서 중첩 호출 허용 -> 주석 처리
 # nest_asyncio.apply()
@@ -36,13 +37,22 @@ from langchain_upstage import ChatUpstage
 
 # Google 인증 관련 모듈 임포트
 from google_auth import (
-    create_oauth_flow, get_authorization_url, fetch_token, 
-    save_credentials, load_credentials, is_authenticated,
+    create_oauth_flow, get_authorization_url, fetch_token,
     build_gmail_service, build_calendar_service
 )
+
+from db_helper import (save_credentials, load_credentials, is_authenticated, init_db)
+
+
 from calendar_utils import create_calendar_event
 from gmail_utils import send_email
 from datetime import datetime
+
+# --- 추가: 데이터베이스 관련 임포트 및 초기화 --- START
+from db_helper import init_db, save_credentials, load_credentials, is_authenticated
+
+init_db() # 앱 시작 시 데이터베이스 초기화
+# --- 추가: 데이터베이스 관련 임포트 및 초기화 --- END
 
 # 환경 변수 로드 (.env 파일에서 API 키 등의 설정을 가져옴)
 load_dotenv(override=True)
@@ -63,15 +73,22 @@ with tab1:
     with st.sidebar.container(border=True):
         st.markdown("### 🦋 나만의 비서: 나비(Nabee)")
         st.caption("**나비**는 당신의 일상을 더 스마트하게 관리하도록 돕는 AI 비서입니다.") # caption으로 변경
- 
+        st.divider() # 구분선 추가
+        
         st.markdown("📧 **Gmail 및 캘린더 연동**")
         st.caption("메일 확인/작성 및 캘린더 일정 관리") # 각 항목 설명은 caption 사용
         
         st.markdown("📰 **관심 분야 조사**")
         st.caption("최신 정보 보고서 받기")
+
+        st.markdown("🔍 **직접 검색**")
+        st.caption("원하는 정보 직접 찾아보기")
         
         st.markdown("💬 **일상 대화**")
         st.caption("날씨 질문, 간단한 대화 등")
+        
+        st.divider() # 하단 구분선 추가
+        st.markdown("✨ 나비와 함께 더 편리한 일상을 만들어보세요!") # 마무리 문구
         
     # --- 사이드바 상단 서비스 소개 --- END
 
@@ -780,13 +797,20 @@ with tab1:
         else:
             st.success("✅ Google 계정이 연동되었습니다.")
             if st.button("연동 해제", use_container_width=True):
-                token_path = Path("token.pickle")
-                if token_path.exists():
-                    token_path.unlink()
+                # SQLite에서 인증 정보 삭제
+                conn = sqlite3.connect('auth.db')
+                cursor = conn.cursor()
+                
+                # 기본 사용자 ID 삭제 (멀티유저 지원시 필요시 user_id 파라미터 추가)
+                cursor.execute('DELETE FROM google_auth WHERE user_id = ?', ('default',))
+                
+                conn.commit()
+                conn.close()
+                
+                # 세션 상태 초기화
                 st.session_state.google_authenticated = False
                 st.session_state.gmail_service = None
                 st.session_state.calendar_service = None
-                # 연동 해제 시에는 재생성 플래그 설정 불필요
                 st.rerun()
 
     # --- 관심 분야 입력 UI (수정) --- START
